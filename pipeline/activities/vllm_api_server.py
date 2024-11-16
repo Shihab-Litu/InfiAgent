@@ -7,6 +7,8 @@ import json
 import time
 from http import HTTPStatus
 from typing import AsyncGenerator, Dict, List, Optional, Tuple, Union
+# Import torch for FP16 support
+import torch
 
 import fastapi
 import uvicorn
@@ -24,7 +26,7 @@ from vllm.entrypoints.openai.protocol import (
     ChatCompletionRequest, ChatCompletionResponse,
     ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
     ChatCompletionStreamResponse, ChatMessage, DeltaMessage, ErrorResponse,
-    LogProbs, ModelCard, ModelList, ModelPermission, UsageInfo)
+    CompletionLogProbs, ChatCompletionLogProbs, ModelCard, ModelList, ModelPermission, UsageInfo)
 from vllm.logger import init_logger
 from vllm.outputs import RequestOutput
 from vllm.sampling_params import SamplingParams
@@ -164,9 +166,9 @@ async def show_available_models():
 
 def create_logprobs(token_ids: List[int],
                     id_logprobs: List[Dict[int, float]],
-                    initial_text_offset: int = 0) -> LogProbs:
+                    initial_text_offset: int = 0) -> CompletionLogProbs:
     """Create OpenAI-style logprobs."""
-    logprobs = LogProbs()
+    logprobs = CompletionLogProbs()
     last_token_len = 0
     for token_id, id_logprob in zip(token_ids, id_logprobs):
         token = tokenizer.convert_ids_to_tokens(token_id)
@@ -218,7 +220,6 @@ async def create_chat_completion(request: ChatCompletionRequest,
     request_id = f"cmpl-{random_uuid()}"
     created_time = int(time.monotonic())
     try:
-        # spaces_between_special_tokens = request.spaces_between_special_tokens
         sampling_params = SamplingParams(
             n=request.n,
             presence_penalty=request.presence_penalty,
@@ -233,7 +234,6 @@ async def create_chat_completion(request: ChatCompletionRequest,
             ignore_eos=request.ignore_eos,
             use_beam_search=request.use_beam_search,
             skip_special_tokens=request.skip_special_tokens,
-            # spaces_between_special_tokens=spaces_between_special_tokens,
         )
     except ValueError as e:
         return create_error_response(HTTPStatus.BAD_REQUEST, str(e))
@@ -421,7 +421,6 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
 
     created_time = int(time.monotonic())
     try:
-        # spaces_between_special_tokens = request.spaces_between_special_tokens
         sampling_params = SamplingParams(
             n=request.n,
             best_of=request.best_of,
@@ -437,7 +436,6 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
             logprobs=request.logprobs,
             use_beam_search=request.use_beam_search,
             skip_special_tokens=request.skip_special_tokens,
-            # spaces_between_special_tokens=spaces_between_special_tokens,
         )
     except ValueError as e:
         return create_error_response(HTTPStatus.BAD_REQUEST, str(e))
@@ -460,7 +458,7 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
     def create_stream_response_json(
         index: int,
         text: str,
-        logprobs: Optional[LogProbs] = None,
+        logprobs: Optional[CompletionLogProbs] = None,
         finish_reason: Optional[str] = None,
     ) -> str:
         choice_data = CompletionResponseStreamChoice(
@@ -503,7 +501,7 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
                 )
                 yield f"data: {response_json}\n\n"
                 if output.finish_reason is not None:
-                    logprobs = (LogProbs()
+                    logprobs = (CompletionLogProbs()
                                 if request.logprobs is not None else None)
                     response_json = create_stream_response_json(
                         index=i,
@@ -594,7 +592,7 @@ if __name__ == "__main__":
                         type=json.loads,
                         default=["*"],
                         help="allowed headers")
-    parser.add_argument("--served-model-name",
+    parser.add_argument("--served_model_name",
                         type=str,
                         default=None,
                         help="The model name used in the API. If not "
@@ -620,6 +618,19 @@ if __name__ == "__main__":
         served_model = args.model
 
     engine_args = AsyncEngineArgs.from_cli_args(args)
+    # Set the model to use FP16 precision
+    engine_args.torch_dtype = torch.float16 
+    # Enable 4-bit quantization 
+    engine_args.quantization_config = {"load_in_4bit": True}  
+    #configure Adjust for your GPUs
+    max_memory = {0: "10GiB", 1: "10GiB"} 
+    engine_args.device_map = max_memory
+    # Replace with desired offload directory
+    engine_args.offload_folder = "/tmp/offload"  
+    engine_args.offload_to_cpu = True
+
+    print(f"Model configuration: {engine_args}")
+
     engine = AsyncLLMEngine.from_engine_args(engine_args)
     engine_model_config = asyncio.run(engine.get_model_config())
     max_model_len = engine_model_config.max_model_len
