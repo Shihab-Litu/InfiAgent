@@ -7,9 +7,8 @@ import json
 import time
 from http import HTTPStatus
 from typing import AsyncGenerator, Dict, List, Optional, Tuple, Union
-# Import torch for FP16 support
-import torch
 
+import torch
 import fastapi
 import uvicorn
 from fastapi import Request
@@ -434,7 +433,7 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
             ignore_eos=request.ignore_eos,
             max_tokens=request.max_tokens,
             logprobs=request.logprobs,
-            use_beam_search=request.use_beam_search,
+            #use_beam_search=request.use_beam_search,
             skip_special_tokens=request.skip_special_tokens,
         )
     except ValueError as e:
@@ -618,19 +617,7 @@ if __name__ == "__main__":
         served_model = args.model
 
     engine_args = AsyncEngineArgs.from_cli_args(args)
-    # Set the model to use FP16 precision
-    engine_args.torch_dtype = torch.float16 
-    # Enable 4-bit quantization 
-    engine_args.quantization_config = {"load_in_4bit": True}  
-    #configure Adjust for your GPUs
-    max_memory = {0: "10GiB", 1: "10GiB"} 
-    engine_args.device_map = max_memory
-    # Replace with desired offload directory
-    engine_args.offload_folder = "/tmp/offload"  
-    engine_args.offload_to_cpu = True
-
-    print(f"Model configuration: {engine_args}")
-
+    engine_args.dtype = torch.float16
     engine = AsyncLLMEngine.from_engine_args(engine_args)
     engine_model_config = asyncio.run(engine.get_model_config())
     max_model_len = engine_model_config.max_model_len
