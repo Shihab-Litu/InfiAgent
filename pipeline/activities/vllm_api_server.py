@@ -395,21 +395,36 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
     if isinstance(request.prompt, list):
         if len(request.prompt) == 0:
             return create_error_response(HTTPStatus.BAD_REQUEST,
-                                         "please provide at least one prompt")
+                                            "please provide at least one prompt")
         first_element = request.prompt[0]
         if isinstance(first_element, int):
             use_token_ids = True
             prompt = request.prompt
-        elif isinstance(first_element, (str, list)):
-            # TODO: handles multiple prompt case in list[list[int]]
-            if len(request.prompt) > 1:
-                return create_error_response(
-                    HTTPStatus.BAD_REQUEST,
-                    "multiple prompts in a batch is not currently supported")
-            use_token_ids = not isinstance(first_element, str)
+        elif isinstance(first_element, str):
+            use_token_ids = False
             prompt = request.prompt[0]
     else:
+        use_token_ids = False
         prompt = request.prompt
+
+    # if isinstance(request.prompt, list):
+    #     if len(request.prompt) == 0:
+    #         return create_error_response(HTTPStatus.BAD_REQUEST,
+    #                                      "please provide at least one prompt")
+    #     first_element = request.prompt[0]
+    #     if isinstance(first_element, int):
+    #         use_token_ids = True
+    #         prompt = request.prompt
+    #     elif isinstance(first_element, (str, list)):
+    #         # TODO: handles multiple prompt case in list[list[int]]
+    #         if len(request.prompt) > 1:
+    #             return create_error_response(
+    #                 HTTPStatus.BAD_REQUEST,
+    #                 "multiple prompts in a batch is not currently supported")
+    #         use_token_ids = not isinstance(first_element, str)
+    #         prompt = request.prompt[0]
+    # else:
+    #     prompt = request.prompt
 
     if use_token_ids:
         _, error_check_ret = await check_length(request, prompt_ids=prompt)
@@ -440,13 +455,20 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
         return create_error_response(HTTPStatus.BAD_REQUEST, str(e))
 
     if use_token_ids:
-        result_generator = engine.generate(None,
-                                           sampling_params,
-                                           request_id,
-                                           prompt_token_ids=prompt)
+        prompt_text= tokenizer.decode(prompt) 
+        result_generator = engine.generate( prompt_text, sampling_params, request_id )
     else:
-        result_generator = engine.generate(prompt, sampling_params, request_id,
-                                           token_ids)
+        result_generator =  engine.generate( prompt=prompt, sampling_params=sampling_params, request_id=request_id )
+
+
+    # if use_token_ids:
+    #     result_generator = engine.generate(None,
+    #                                        sampling_params,
+    #                                        request_id,
+    #                                        prompt_token_ids=prompt)
+    # else:
+    #     result_generator = engine.generate(prompt, sampling_params, request_id,
+    #                                        token_ids)
 
     # Similar to the OpenAI API, when n != best_of, we do not stream the
     # results. In addition, we do not stream the results when use beam search.
