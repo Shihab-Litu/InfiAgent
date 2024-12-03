@@ -14,22 +14,24 @@ from tenacity import (  # for exponential backoff
 )
 
 #Add_myself
-
-from openai import OpenAI
-from openai import AsyncOpenAI
 # from config import OPENAI_API_KEY
-
 # client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"), api_base="http://0.0.0.0:9729/v1")
-
 # aclient = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"), api_base="http://0.0.0.0:9729/v1")
 # from openai import ChatCompletion
-
 # client = OpenAI(api_key="", api_base="http://0.0.0.0:9729/v1")
 # aclient = AsyncOpenAI(api_key="", api_base="http://0.0.0.0:9729/v1")
+# client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+# aclient = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+import os
+from openai import OpenAI
+from openai import AsyncOpenAI
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
-aclient = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+# openai.api_key= ""
+# client = OpenAI(api_key="",base_url="http://0.0.0.0:8000")
+# aclient = AsyncOpenAI(api_key="",base_url="http://0.0.0.0:8000")
 
+client = OpenAI(api_key="", base_url="http://0.0.0.0:8000/v1")
+aclient = AsyncOpenAI(api_key="", base_url="http://0.0.0.0:8000/v1")
 #Add_myself
 
 
@@ -75,11 +77,12 @@ class LlamaOpenAIClient(BaseLLM, ABC):
         #openai.api_base = "http://0.0.0.0:9729/v1"
 
         #Add_myself
-        # client = OpenAI(api_key="", api_base="http://0.0.0.0:9729/v1")
-        # aclient = AsyncOpenAI(api_key="", api_base="http://0.0.0.0:9729/v1")
-        ###
-        client = OpenAI(api_key="", api_base="http://0.0.0.0:8000")
-        aclient = AsyncOpenAI(api_key="", api_base="http://0.0.0.0:8000")
+        # self.client = OpenAI(api_key="")
+        # self.aclient = AsyncOpenAI(api_key="")
+
+
+        # self.client = OpenAI(api_key=None, base_url="http://0.0.0.0:8000")
+        # self.aclient = AsyncOpenAI(api_key=None, base_url="http://0.0.0.0:8000")
         #Add_myself
 
 
