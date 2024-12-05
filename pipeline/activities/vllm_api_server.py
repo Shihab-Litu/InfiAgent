@@ -8,6 +8,7 @@ import time
 from http import HTTPStatus
 from typing import AsyncGenerator, Dict, List, Optional, Tuple, Union
 
+import torch
 import fastapi
 import uvicorn
 from fastapi import Request
@@ -24,7 +25,7 @@ from vllm.entrypoints.openai.protocol import (
     ChatCompletionRequest, ChatCompletionResponse,
     ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
     ChatCompletionStreamResponse, ChatMessage, DeltaMessage, ErrorResponse,
-    LogProbs, ModelCard, ModelList, ModelPermission, UsageInfo)
+    CompletionLogProbs, ChatCompletionLogProbs, ModelCard, ModelList, ModelPermission, UsageInfo)
 from vllm.logger import init_logger
 from vllm.outputs import RequestOutput
 from vllm.sampling_params import SamplingParams
@@ -164,9 +165,9 @@ async def show_available_models():
 
 def create_logprobs(token_ids: List[int],
                     id_logprobs: List[Dict[int, float]],
-                    initial_text_offset: int = 0) -> LogProbs:
+                    initial_text_offset: int = 0) -> CompletionLogProbs:
     """Create OpenAI-style logprobs."""
-    logprobs = LogProbs()
+    logprobs = CompletionLogProbs()
     last_token_len = 0
     for token_id, id_logprob in zip(token_ids, id_logprobs):
         token = tokenizer.convert_ids_to_tokens(token_id)
@@ -218,7 +219,6 @@ async def create_chat_completion(request: ChatCompletionRequest,
     request_id = f"cmpl-{random_uuid()}"
     created_time = int(time.monotonic())
     try:
-        # spaces_between_special_tokens = request.spaces_between_special_tokens
         sampling_params = SamplingParams(
             n=request.n,
             presence_penalty=request.presence_penalty,
@@ -233,7 +233,6 @@ async def create_chat_completion(request: ChatCompletionRequest,
             ignore_eos=request.ignore_eos,
             use_beam_search=request.use_beam_search,
             skip_special_tokens=request.skip_special_tokens,
-            # spaces_between_special_tokens=spaces_between_special_tokens,
         )
     except ValueError as e:
         return create_error_response(HTTPStatus.BAD_REQUEST, str(e))
@@ -396,21 +395,36 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
     if isinstance(request.prompt, list):
         if len(request.prompt) == 0:
             return create_error_response(HTTPStatus.BAD_REQUEST,
-                                         "please provide at least one prompt")
+                                            "please provide at least one prompt")
         first_element = request.prompt[0]
         if isinstance(first_element, int):
             use_token_ids = True
             prompt = request.prompt
-        elif isinstance(first_element, (str, list)):
-            # TODO: handles multiple prompt case in list[list[int]]
-            if len(request.prompt) > 1:
-                return create_error_response(
-                    HTTPStatus.BAD_REQUEST,
-                    "multiple prompts in a batch is not currently supported")
-            use_token_ids = not isinstance(first_element, str)
+        elif isinstance(first_element, str):
+            use_token_ids = False
             prompt = request.prompt[0]
     else:
+        use_token_ids = False
         prompt = request.prompt
+
+    # if isinstance(request.prompt, list):
+    #     if len(request.prompt) == 0:
+    #         return create_error_response(HTTPStatus.BAD_REQUEST,
+    #                                      "please provide at least one prompt")
+    #     first_element = request.prompt[0]
+    #     if isinstance(first_element, int):
+    #         use_token_ids = True
+    #         prompt = request.prompt
+    #     elif isinstance(first_element, (str, list)):
+    #         # TODO: handles multiple prompt case in list[list[int]]
+    #         if len(request.prompt) > 1:
+    #             return create_error_response(
+    #                 HTTPStatus.BAD_REQUEST,
+    #                 "multiple prompts in a batch is not currently supported")
+    #         use_token_ids = not isinstance(first_element, str)
+    #         prompt = request.prompt[0]
+    # else:
+    #     prompt = request.prompt
 
     if use_token_ids:
         _, error_check_ret = await check_length(request, prompt_ids=prompt)
@@ -421,7 +435,6 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
 
     created_time = int(time.monotonic())
     try:
-        # spaces_between_special_tokens = request.spaces_between_special_tokens
         sampling_params = SamplingParams(
             n=request.n,
             best_of=request.best_of,
@@ -435,21 +448,27 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
             ignore_eos=request.ignore_eos,
             max_tokens=request.max_tokens,
             logprobs=request.logprobs,
-            use_beam_search=request.use_beam_search,
+            #use_beam_search=request.use_beam_search,
             skip_special_tokens=request.skip_special_tokens,
-            # spaces_between_special_tokens=spaces_between_special_tokens,
         )
     except ValueError as e:
         return create_error_response(HTTPStatus.BAD_REQUEST, str(e))
 
     if use_token_ids:
-        result_generator = engine.generate(None,
-                                           sampling_params,
-                                           request_id,
-                                           prompt_token_ids=prompt)
+        prompt_text= tokenizer.decode(prompt) 
+        result_generator = engine.generate( prompt_text, sampling_params, request_id )
     else:
-        result_generator = engine.generate(prompt, sampling_params, request_id,
-                                           token_ids)
+        result_generator =  engine.generate( prompt=prompt, sampling_params=sampling_params, request_id=request_id )
+
+
+    # if use_token_ids:
+    #     result_generator = engine.generate(None,
+    #                                        sampling_params,
+    #                                        request_id,
+    #                                        prompt_token_ids=prompt)
+    # else:
+    #     result_generator = engine.generate(prompt, sampling_params, request_id,
+    #                                        token_ids)
 
     # Similar to the OpenAI API, when n != best_of, we do not stream the
     # results. In addition, we do not stream the results when use beam search.
@@ -460,7 +479,7 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
     def create_stream_response_json(
         index: int,
         text: str,
-        logprobs: Optional[LogProbs] = None,
+        logprobs: Optional[CompletionLogProbs] = None,
         finish_reason: Optional[str] = None,
     ) -> str:
         choice_data = CompletionResponseStreamChoice(
@@ -503,7 +522,7 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
                 )
                 yield f"data: {response_json}\n\n"
                 if output.finish_reason is not None:
-                    logprobs = (LogProbs()
+                    logprobs = (CompletionLogProbs()
                                 if request.logprobs is not None else None)
                     response_json = create_stream_response_json(
                         index=i,
@@ -594,7 +613,7 @@ if __name__ == "__main__":
                         type=json.loads,
                         default=["*"],
                         help="allowed headers")
-    parser.add_argument("--served-model-name",
+    parser.add_argument("--served_model_name",
                         type=str,
                         default=None,
                         help="The model name used in the API. If not "
@@ -620,6 +639,7 @@ if __name__ == "__main__":
         served_model = args.model
 
     engine_args = AsyncEngineArgs.from_cli_args(args)
+    engine_args.dtype = torch.float16
     engine = AsyncLLMEngine.from_engine_args(engine_args)
     engine_model_config = asyncio.run(engine.get_model_config())
     max_model_len = engine_model_config.max_model_len
