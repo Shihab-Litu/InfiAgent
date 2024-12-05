@@ -4,13 +4,35 @@ import os
 from abc import ABC
 from typing import Callable, List
 
-import openai
+#import openai
 from tenacity import (  # for exponential backoff
     before_sleep_log,
     retry,
     stop_after_attempt,
     wait_random_exponential,
 )
+
+#Add_myself
+# from config import OPENAI_API_KEY
+# client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"), api_base="http://0.0.0.0:9729/v1")
+# aclient = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"), api_base="http://0.0.0.0:9729/v1")
+# from openai import ChatCompletion
+# client = OpenAI(api_key="", api_base="http://0.0.0.0:9729/v1")
+# aclient = AsyncOpenAI(api_key="", api_base="http://0.0.0.0:9729/v1")
+# client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+# aclient = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+import os
+from openai import OpenAI
+from openai import AsyncOpenAI
+
+# openai.api_key= ""
+# client = OpenAI(api_key="",base_url="http://0.0.0.0:8000")
+# aclient = AsyncOpenAI(api_key="",base_url="http://0.0.0.0:8000")
+
+client = OpenAI(api_key="", base_url="http://0.0.0.0:8000/v1")
+aclient = AsyncOpenAI(api_key="", base_url="http://0.0.0.0:8000/v1")
+#Add_myself
+
 
 from ..base_llm import BaseLLM
 from ...schemas import *
@@ -23,14 +45,14 @@ MAX_PROMPT_LENGTH = 4096
 @retry(wait=wait_random_exponential(min=1, max=10), stop=stop_after_attempt(5), reraise=True,
        before_sleep=before_sleep_log(logger, logging.WARNING))
 def chatcompletion_with_backoff(**kwargs):
-    return openai.ChatCompletion.create(**kwargs)
+    return client.chat.completions.create(**kwargs)
 
 
 @retry(wait=wait_random_exponential(min=1, max=10), stop=stop_after_attempt(5), reraise=True,
        before_sleep=before_sleep_log(logger, logging.WARNING))
 async def async_chatcompletion_with_backoff(**kwargs):
     async def _internal_coroutine():
-        return await openai.ChatCompletion.acreate(**kwargs)
+        return await aclient.chat.completions.create(**kwargs)
 
     return await _internal_coroutine()
 
@@ -50,8 +72,19 @@ class LlamaOpenAIClient(BaseLLM, ABC):
 
     def __init__(self, **data):
         super().__init__(**data)
-        openai.api_key = ""
-        openai.api_base = "http://0.0.0.0:9729/v1"
+        # TODO: The 'openai.api_base' option isn't read in the client API. You will need to pass it when you instantiate the client, e.g. 'OpenAI(base_url="http://0.0.0.0:9729/v1")'
+        #openai.api_base = "http://0.0.0.0:9729/v1"
+
+        #Add_myself
+        # self.client = OpenAI(api_key="")
+        # self.aclient = AsyncOpenAI(api_key="")
+
+
+        # self.client = OpenAI(api_key=None, base_url="http://0.0.0.0:8000")
+        # self.aclient = AsyncOpenAI(api_key=None, base_url="http://0.0.0.0:8000")
+        #Add_myself
+
+
 
     @classmethod
     async def create(cls, config_data):
@@ -59,7 +92,7 @@ class LlamaOpenAIClient(BaseLLM, ABC):
 
     def get_model_name(self) -> str:
         return self.model_name
-    
+
     def get_model_param(self) -> LlamaParamModel:
         return self.params
 
@@ -79,6 +112,7 @@ class LlamaOpenAIClient(BaseLLM, ABC):
             messages=[
                 {"role": "user", "content": prompt[-MAX_PROMPT_LENGTH:]}
             ],
+            #api_base="http://0.0.0.0:9729/v1",
             timeout=1000,
             # temperature=self.params.temperature,
             # max_tokens=self.params.max_tokens,
@@ -90,7 +124,7 @@ class LlamaOpenAIClient(BaseLLM, ABC):
         )
 
         return BaseCompletion(state="success",
-                              content=response.choices[0].message["content"],
+                              content=response.choices[0].message.content,
                               prompt_token=response.get("usage", {}).get("prompt_tokens", 0),
                               completion_token=response.get("usage", {}).get("completion_tokens", 0))
 
@@ -111,6 +145,7 @@ class LlamaOpenAIClient(BaseLLM, ABC):
             messages=[
                 {"role": "user", "content": prompt[-MAX_PROMPT_LENGTH:]}
             ],
+            #api_base="http://0.0.0.0:9729/v1",
             timeout=1000,
             #temperature=0.2,
             #max_tokens=4096,
@@ -136,11 +171,12 @@ class LlamaOpenAIClient(BaseLLM, ABC):
         :rtype: ChatCompletion
         """
         try:
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 n=self.params.n,
                 model=self.model_name,
                 timeout=1000,
                 messages=message,
+                #api_base="http://0.0.0.0:9729/v1",
                 temperature=self.params.temperature,
                 max_tokens=self.params.max_tokens,
                 top_p=self.params.top_p,
@@ -170,16 +206,17 @@ class LlamaOpenAIClient(BaseLLM, ABC):
         :rtype: ChatCompletion
         """
         try:
-            # response = openai.ChatCompletion.create(
+            # response =client.chat.completions.create(
             #     engine=self.get_model_name(),  # GPT-4
             #     messages=message,
             #     timeout=1000,
             #     **kwargs,
             # )
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 n=self.params.n,
                 model=self.model_name,
                 messages=message,
+                #api_base="http://0.0.0.0:9729/v1",
                 temperature=self.params.temperature,
                 max_tokens=self.params.max_tokens,
                 top_p=self.params.top_p,
@@ -188,11 +225,11 @@ class LlamaOpenAIClient(BaseLLM, ABC):
                 stream=True,
                 **kwargs
             )
-            role = next(response).choices[0].delta["role"]
+            role = next(response).choices[0].delta.role
             messages = []
             ## TODO: Calculate prompt_token and for stream mode
             for resp in response:
-                messages.append(resp.choices[0].delta.get("content", ""))
+                messages.append(resp.choices[0].delta.content)
                 yield ChatCompletion(
                     state="success",
                     role=role,
@@ -230,10 +267,11 @@ class LlamaOpenAIClient(BaseLLM, ABC):
             #     functions=function_schema,
             #     timeout=1000,
             # )
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 n=self.params.n,
                 model=self.model_name,
                 messages=message,
+                #api_base="http://0.0.0.0:9729/v1",
                 functions=function_schema,
                 temperature=self.params.temperature,
                 max_tokens=self.params.max_tokens,
@@ -272,7 +310,7 @@ class LlamaOpenAIClient(BaseLLM, ABC):
                         "content": function_response,
                     }
                 )
-                second_response = openai.ChatCompletion.create(
+                second_response = client.chat.completions.create(
                     model=self.get_model_name(),
                     messages=message,
                 )
@@ -311,15 +349,17 @@ class LlamaOpenAIClient(BaseLLM, ABC):
     def function_chat_stream_completion(
             self,
             message: List[dict],
+            #api_base="http://0.0.0.0:9729/v1",
             function_map: Dict[str, Callable],
             function_schema: List[Dict],
     ) -> ChatCompletionWithHistory:
         assert len(function_schema) == len(function_map)
         try:
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 n=self.params.n,
                 model=self.get_model_name(),
                 messages=message,
+                #api_base="http://0.0.0.0:9729/v1",
                 functions=function_schema,
                 temperature=self.params.temperature,
                 max_tokens=self.params.max_tokens,
