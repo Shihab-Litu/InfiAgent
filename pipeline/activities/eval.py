@@ -127,7 +127,10 @@ def extract_data_from_folder(folder_path):
 
 
 async def main():
-    extracted_data = read_dicts_from_file('./data/da-dev-questions.jsonl')
+    #extracted_data = read_dicts_from_file('./data/da-dev-questions.jsonl')
+    path = "../examples/DA-Agent/data/"
+    print(os.listdir(path))
+    extracted_data = read_dicts_from_file('../examples/DA-Agent/data/da-dev-questions.jsonl')
     args = _get_script_params()
 
     model_name = getattr(args, "llm", None)
@@ -137,7 +140,6 @@ async def main():
         logger.info("setup open ai ")
         if os.environ.get("OPENAI_API_KEY") is None:
             if open_ai_key:
-                openai.api_key = open_ai_key
                 os.environ["OPENAI_API_KEY"] = open_ai_key
             else:
                 raise ValueError("OPENAI_API_KEY is None, please provide open ai key to use open ai model. Adding "
@@ -150,7 +152,8 @@ async def main():
     else:
         logger.info("use local model ")
 
-    table_path = 'data/da-dev-tables'
+    #table_path = 'data/da-dev-tables'
+    table_path = "../examples/DA-Agent/data/da-dev-tables"
     results = []
 
     i = 1
@@ -190,18 +193,33 @@ async def main():
         results.append(iteration_result)
         print(f"response: {response}")
 
+    #     if i % 10 == 0:
+    #         with open('results_{}.json'.format(model_name), 'w') as outfile:
+    #             json.dump(results, outfile, indent=4)
+
+    #     i += 1
+
+    # with open('results_{}.json'.format(model_name), 'w') as outfile:
+    #     json.dump(results, outfile, indent=4)
+
+        #Add_myself
         if i % 10 == 0:
-            with open('results_{}.json'.format(model_name), 'w') as outfile:
+            output_file = 'results_{}.json'.format(model_name)
+            output_dir = os.path.dirname(output_file)
+            if output_dir and not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            with open(output_file, 'w') as outfile:
                 json.dump(results, outfile, indent=4)
 
         i += 1
 
     with open('results_{}.json'.format(model_name), 'w') as outfile:
         json.dump(results, outfile, indent=4)
-
+        #Add_MYSELF
 
 if __name__ == '__main__':
     asyncio.run(main())
     # main()
+
 
 
